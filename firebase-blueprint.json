@@ -1,0 +1,138 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the platform, either a driver or a vehicle owner.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique identifier for the user." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "displayName": { "type": "string", "description": "The user's full name." },
+        "photoURL": { "type": "string", "format": "uri", "description": "The user's profile picture URL." },
+        "role": { "type": "string", "enum": ["owner", "driver"], "description": "The user's role in the platform." },
+        "phone": { "type": "string", "description": "The user's contact number." },
+        "verified": { "type": "boolean", "description": "Whether the user's documents have been verified by an admin." },
+        "verificationStatus": { "type": "string", "enum": ["none", "pending", "approved", "denied"], "description": "The current status of the user's verification." },
+        "verificationData": {
+          "type": "object",
+          "properties": {
+            "aadhaarNumber": { "type": "string" },
+            "licenseNumber": { "type": "string" },
+            "licenseExpiry": { "type": "string" },
+            "licenseVehicleType": { "type": "string" },
+            "policeVerificationStatus": { "type": "string", "enum": ["none", "pending", "verified", "failed"] },
+            "isLicenseVerified": { "type": "boolean" }
+          }
+        },
+        "trustMetrics": {
+          "type": "object",
+          "properties": {
+            "score": { "type": "number" },
+            "onTimeReturnRate": { "type": "number" },
+            "completedBookings": { "type": "number" },
+            "accidentsCount": { "type": "number" },
+            "complaintsCount": { "type": "number" },
+            "totalRatings": { "type": "number" },
+            "averageRating": { "type": "number" }
+          }
+        },
+        "isFlagged": { "type": "boolean" },
+        "flagReason": { "type": "string" },
+        "favorites": { "type": "array", "items": { "type": "string" }, "description": "List of vehicle IDs favorited by the user." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user account was created." }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "A taxi vehicle listed for rental.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique identifier for the vehicle." },
+        "ownerId": { "type": "string", "description": "The UID of the owner who listed the vehicle." },
+        "model": { "type": "string", "description": "The model and make of the vehicle." },
+        "registrationNumber": { "type": "string", "description": "The vehicle's registration number." },
+        "type": { "type": "string", "description": "The type of vehicle (e.g., Sedan, SUV)." },
+        "pricePerDay": { "type": "number", "description": "The daily rental price." },
+        "pricePerWeek": { "type": "number", "description": "The weekly rental price." },
+        "location": { "type": "string", "description": "The general location of the vehicle." },
+        "availability": { "type": "boolean", "description": "Whether the vehicle is currently available for booking." },
+        "images": { "type": "array", "items": { "type": "string" }, "description": "List of image URLs for the vehicle." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the vehicle was listed." }
+      },
+      "required": ["ownerId", "model", "registrationNumber", "pricePerDay"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A rental agreement between a driver and an owner.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique identifier for the booking." },
+        "vehicleId": { "type": "string", "description": "The ID of the vehicle being booked." },
+        "driverId": { "type": "string", "description": "The UID of the driver making the booking." },
+        "ownerId": { "type": "string", "description": "The UID of the vehicle owner." },
+        "startDate": { "type": "string", "format": "date-time", "description": "The start date of the rental." },
+        "endDate": { "type": "string", "format": "date-time", "description": "The end date of the rental." },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "completed", "cancelled"], "description": "The current status of the booking." },
+        "totalAmount": { "type": "number", "description": "The total amount for the rental." },
+        "ownerStartReminderSent": { "type": "boolean", "description": "Whether the start reminder has been sent to the owner." },
+        "driverStartReminderSent": { "type": "boolean", "description": "Whether the start reminder has been sent to the driver." },
+        "ownerEndReminderSent": { "type": "boolean", "description": "Whether the end reminder has been sent to the owner." },
+        "driverEndReminderSent": { "type": "boolean", "description": "Whether the end reminder has been sent to the driver." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the booking request was made." }
+      },
+      "required": ["vehicleId", "driverId", "ownerId", "startDate", "endDate", "status"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "A rating and feedback given by a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique identifier for the review." },
+        "fromId": { "type": "string", "description": "The UID of the user giving the review." },
+        "toId": { "type": "string", "description": "The UID of the user receiving the review." },
+        "bookingId": { "type": "string", "description": "The ID of the associated booking." },
+        "rating": { "type": "number", "description": "The rating score (1-5)." },
+        "comment": { "type": "string", "description": "The feedback comment." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the review was submitted." }
+      },
+      "required": ["fromId", "toId", "bookingId", "rating"]
+    },
+    "DriverLocation": {
+      "title": "DriverLocation",
+      "description": "Real-time GPS location of a driver.",
+      "type": "object",
+      "properties": {
+        "driverId": { "type": "string", "description": "The UID of the driver." },
+        "latitude": { "type": "number", "description": "Current latitude." },
+        "longitude": { "type": "number", "description": "Current longitude." },
+        "lastUpdated": { "type": "string", "format": "date-time", "description": "When the location was last updated." },
+        "startLatitude": { "type": "number", "description": "Latitude where tracking started (for geofencing)." },
+        "startLongitude": { "type": "number", "description": "Longitude where tracking started (for geofencing)." }
+      },
+      "required": ["driverId", "latitude", "longitude", "lastUpdated"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents."
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": "Vehicle",
+      "description": "Vehicle listing documents."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Booking agreement documents."
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "User review documents."
+    },
+    "/locations/{driverId}": {
+      "schema": "DriverLocation",
+      "description": "Real-time driver location documents."
+    }
+  }
+}

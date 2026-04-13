@@ -1,0 +1,6 @@
+{
+  "name": "TaxiDaily - Daily-Wage Taxi Aggregator",
+  "description": "A platform connecting taxi owners with drivers for flexible daily and weekly rentals. Features real-time availability, secure bookings, and performance tracking.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}

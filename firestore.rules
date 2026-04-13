@@ -1,0 +1,248 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (matches auth.uid)
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - displayName: string (optional)
+    //   - photoURL: string (optional, url format)
+    //   - role: string (required, ['owner', 'driver'])
+    //   - phone: string (optional)
+    //   - licenseNumber: string (optional)
+    //   - verified: bool (required, default false)
+    //   - verificationStatus: string (optional, ['none', 'pending', 'approved', 'denied'])
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: vehicles
+    // Document ID: {vehicleId}
+    // Fields:
+    //   - ownerId: string (required, matches auth.uid)
+    //   - model: string (required)
+    //   - registrationNumber: string (required)
+    //   - type: string (required)
+    //   - pricePerDay: number (required, positive)
+    //   - pricePerWeek: number (optional, positive)
+    //   - location: string (required)
+    //   - availability: bool (required)
+    //   - images: list (optional, max 10)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: bookings
+    // Document ID: {bookingId}
+    // Fields:
+    //   - vehicleId: string (required)
+    //   - driverId: string (required, matches auth.uid)
+    //   - ownerId: string (required)
+    //   - startDate: timestamp (required)
+    //   - endDate: timestamp (required)
+    //   - rentalType: string (required, ['daily', 'weekly'])
+    //   - status: string (required, ['pending', 'confirmed', 'completed', 'cancelled'])
+    //   - totalAmount: number (required, positive)
+    //   - ownerStartReminderSent: bool (optional)
+    //   - driverStartReminderSent: bool (optional)
+    //   - ownerEndReminderSent: bool (optional)
+    //   - driverEndReminderSent: bool (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: reviews
+    // Document ID: {reviewId}
+    // Fields:
+    //   - fromId: string (required, matches auth.uid)
+    //   - toId: string (required)
+    //   - bookingId: string (required)
+    //   - rating: number (required, 1-5)
+    //   - comment: string (optional, max 500)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: notifications
+    // Document ID: {notificationId}
+    // Fields:
+    //   - userId: string (required, recipient)
+    //   - title: string (required)
+    //   - message: string (required)
+    //   - type: string (required, ['booking', 'verification', 'system'])
+    //   - read: bool (required)
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+         (request.auth.token.email == "prachig1703@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'role', 'verified', 'createdAt']) &&
+             data.uid is string &&
+             isValidEmail(data.email) &&
+             data.role in ['owner', 'driver', 'admin'] &&
+             data.verified is bool &&
+             data.createdAt is timestamp &&
+             (data.displayName == null || (data.displayName is string && data.displayName.size() < 100)) &&
+             (data.photoURL == null || isValidUrl(data.photoURL)) &&
+             (!('verificationStatus' in data) || data.verificationStatus in ['none', 'pending', 'approved', 'denied']) &&
+             (!('isFlagged' in data) || data.isFlagged is bool) &&
+             (!('trustMetrics' in data) || (
+               data.trustMetrics.score is number &&
+               data.trustMetrics.onTimeReturnRate is number &&
+               data.trustMetrics.completedBookings is number &&
+               data.trustMetrics.accidentsCount is number &&
+               data.trustMetrics.complaintsCount is number &&
+               data.trustMetrics.totalRatings is number &&
+               data.trustMetrics.averageRating is number
+             )) &&
+             (!('verificationData' in data) || (
+               data.verificationData.policeVerificationStatus in ['none', 'pending', 'verified', 'failed'] &&
+               data.verificationData.isLicenseVerified is bool
+             ));
+    }
+
+    function isValidVehicle(data) {
+      return hasRequiredFields(['ownerId', 'model', 'registrationNumber', 'type', 'pricePerDay', 'location', 'availability', 'createdAt']) &&
+             data.ownerId == request.auth.uid &&
+             data.model is string && data.model.size() < 100 &&
+             data.registrationNumber is string && data.registrationNumber.size() < 20 &&
+             data.pricePerDay is number && data.pricePerDay > 0 &&
+             data.availability is bool &&
+             data.createdAt is timestamp &&
+             (!('images' in data) || (data.images is list && data.images.size() <= 10)) &&
+             (!('pricePerWeek' in data) || (data.pricePerWeek is number && data.pricePerWeek > 0));
+    }
+
+    function isValidBooking(data) {
+      return hasRequiredFields(['vehicleId', 'driverId', 'ownerId', 'startDate', 'endDate', 'rentalType', 'status', 'totalAmount', 'createdAt']) &&
+             data.rentalType in ['daily', 'weekly'] &&
+             data.status in ['pending', 'confirmed', 'completed', 'cancelled'] &&
+             data.totalAmount is number && data.totalAmount > 0 &&
+             data.startDate is timestamp &&
+             data.endDate is timestamp &&
+             data.createdAt is timestamp &&
+             data.startDate >= request.time - duration.value(24, 'h') &&
+             data.endDate >= data.startDate &&
+             (!('ownerStartReminderSent' in data) || data.ownerStartReminderSent is bool) &&
+             (!('driverStartReminderSent' in data) || data.driverStartReminderSent is bool) &&
+             (!('ownerEndReminderSent' in data) || data.ownerEndReminderSent is bool) &&
+             (!('driverEndReminderSent' in data) || data.driverEndReminderSent is bool);
+    }
+
+    function isValidReview(data) {
+      return hasRequiredFields(['fromId', 'toId', 'bookingId', 'rating', 'createdAt']) &&
+             data.fromId == request.auth.uid &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+             (data.comment == null || (data.comment is string && data.comment.size() < 500)) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return hasRequiredFields(['userId', 'title', 'message', 'type', 'read', 'createdAt']) &&
+             data.userId is string &&
+             data.title is string && data.title.size() < 100 &&
+             data.message is string && data.message.size() < 500 &&
+             data.type in ['booking', 'verification', 'system'] &&
+             data.read is bool &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidLocation(data) {
+      return hasRequiredFields(['driverId', 'latitude', 'longitude', 'lastUpdated']) &&
+             data.driverId == request.auth.uid &&
+             data.latitude is number && data.latitude >= -90 && data.latitude <= 90 &&
+             data.longitude is number && data.longitude >= -180 && data.longitude <= 180 &&
+             data.lastUpdated is timestamp &&
+             (!('startLatitude' in data) || data.startLatitude is number) &&
+             (!('startLongitude' in data) || data.startLongitude is number);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.verified == false;
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && 
+                       request.resource.data.role == resource.data.role && 
+                       request.resource.data.verified == resource.data.verified &&
+                       (request.resource.data.verificationStatus == 'pending' || 
+                        request.resource.data.verificationStatus == resource.data.verificationStatus ||
+                        !('verificationStatus' in request.resource.data))) || isAdmin();
+    }
+
+    match /vehicles/{vehicleId} {
+      allow read: if true; // Publicly browseable
+      allow create: if isAuthenticated() && isValidVehicle(request.resource.data);
+      allow update: if (isAuthenticated() && resource.data.ownerId == request.auth.uid && isValidVehicle(request.resource.data)) || isAdmin();
+      allow delete: if (isAuthenticated() && resource.data.ownerId == request.auth.uid) || isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.driverId || request.auth.uid == resource.data.ownerId || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.driverId == request.auth.uid && isValidBooking(request.resource.data);
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.driverId || request.auth.uid == resource.data.ownerId || isAdmin()) && isValidBooking(request.resource.data);
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidReview(request.resource.data);
+      allow update: if (isAuthenticated() && resource.data.fromId == request.auth.uid && isValidReview(request.resource.data)) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.userId 
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    match /locations/{driverId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(driverId) && isValidLocation(request.resource.data);
+    }
+    
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
